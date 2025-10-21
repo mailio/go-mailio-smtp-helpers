@@ -360,6 +360,8 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 	}
 
 	email := &abi.Mail{}
+	// raw mime is the original mime message
+	email.RawMime = mime
 
 	// get the headers
 	headers := msg.Root.Header
