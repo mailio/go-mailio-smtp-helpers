@@ -363,40 +363,28 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 	// get the headers
 	headers := msg.Root.Header
 	email.MessageId = msg.GetHeader("Message-ID")
-	from, fErr := mail.ParseAddress(headers.Get("From"))
-	to, tErr := mail.ParseAddressList(headers.Get("To"))
-	var rErr error
+	from, _ := mail.ParseAddress(headers.Get("From"))
+	to, _ := mail.ParseAddressList(headers.Get("To"))
+	// var rErr error
 	var replyTo []*mail.Address
 	if headers.Get("Reply-To") != "" {
 		rt, err := mail.ParseAddressList(headers.Get("Reply-To"))
-		rErr = err
-		replyTo = rt
-	}
-	if tErr != nil {
-		return nil, ErrInvalidRecipientHeaders
-	}
-	if fErr != nil {
-		return nil, ErrInvalidFromHeader
-	}
-	if rErr != nil {
-		return nil, ErrInvalidReplyToHeader
+		if err == nil {
+			replyTo = rt
+		}
 	}
 
 	if headers.Get("Cc") != "" {
-		cc, ccErr := mail.ParseAddressList(headers.Get("Cc"))
-		if ccErr != nil {
-			// failed parsing CC
-			return nil, ErrInvalidRecipientHeaders
+		cc, _ := mail.ParseAddressList(headers.Get("Cc"))
+		if len(cc) > 0 {
+			email.Cc = cc
 		}
-		email.Cc = cc
 	}
 	if headers.Get("Bcc") != "" {
-		bcc, bcErr := mail.ParseAddressList(headers.Get("Bcc"))
-		if bcErr != nil {
-			// failed parsing BCC
-			return nil, ErrInvalidRecipientHeaders
+		bcc, _ := mail.ParseAddressList(headers.Get("Bcc"))
+		if len(bcc) > 0 {
+			email.Bcc = bcc
 		}
-		email.Bcc = bcc
 	}
 
 	email.From = *from
@@ -423,8 +411,8 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 
 	// get the body
 	email.Subject = msg.GetHeader("Subject")
-	dt, tErr := msg.Date()
-	if tErr != nil {
+	dt, dateErr := msg.Date()
+	if dateErr != nil {
 		email.Timestamp = time.Now().UTC().UnixMilli()
 	} else {
 		email.Timestamp = dt.UnixMilli()
