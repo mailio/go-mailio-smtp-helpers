@@ -3,7 +3,6 @@ package mailiosmtphelpers
 import (
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -49,10 +48,10 @@ func GenerateRFC2822MessageID(hostname string) (string, error) {
 	pid := os.Getpid()
 	rint, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
-		return "", err
+		return "", ErrInvalidMessageID
 	}
 	if hostname == "" {
-		return "", fmt.Errorf("hostname is required")
+		return "", ErrInvalidHostname
 	}
 	msgid := fmt.Sprintf("<%d.%d.%d@%s>", t, pid, rint, hostname)
 	return msgid, nil
@@ -62,12 +61,12 @@ func GenerateRFC2822MessageID(hostname string) (string, error) {
 func ToMime(msg *abi.Mail, rfc2822MessageID string) ([]byte, error) {
 
 	if rfc2822MessageID == "" {
-		return nil, errors.New("rfc2822MessageID is required")
+		return nil, ErrInvalidRFC2822MessageID
 	}
 
 	// simple message id validation
 	if !strings.HasPrefix(rfc2822MessageID, "<") || !strings.HasSuffix(rfc2822MessageID, ">") || !strings.Contains(rfc2822MessageID, "@") {
-		return nil, errors.New("rfc2822MessageID is not valid")
+		return nil, ErrInvalidRFC2822MessageID
 	}
 
 	// convert html to text (remove unwanted tags)
@@ -135,12 +134,12 @@ func ToMime(msg *abi.Mail, rfc2822MessageID string) ([]byte, error) {
 	// build and encode the message
 	ep, err := outgoingMime.Build()
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidMessage
 	}
 	var buf bytes.Buffer
 	err = ep.Encode(&buf)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidMessage
 	}
 
 	return buf.Bytes(), nil
@@ -220,8 +219,7 @@ func ToBounce(recipient mail.Address, msg abi.Mail, bounceCode string, bounceRea
 
 	// Close the multipart writer to finalize the boundary
 	if err := writer.Close(); err != nil {
-		fmt.Println("Error closing writer:", err)
-		return nil, err
+		return nil, ErrInvalidMessage
 	}
 
 	// Combine headers and body
@@ -251,9 +249,9 @@ func ToComplaint(recipient mail.Address, reporter mail.Address, msg abi.Mail, co
 	}
 
 	// Convert the original message to MIME
-	originalMsgMime, err := ToMime(&msg, host)
+	originalMsgMime, err := ToMime(&msg, msg.MessageId)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidMessage
 	}
 
 	// Buffers for headers and MIME message
@@ -339,8 +337,7 @@ func ToComplaint(recipient mail.Address, reporter mail.Address, msg abi.Mail, co
 
 	// Close the multipart writer to finalize the boundary
 	if err := writer.Close(); err != nil {
-		fmt.Println("Error closing writer:", err)
-		return nil, err
+		return nil, ErrInvalidMessage
 	}
 
 	// Combine headers and body
@@ -356,7 +353,7 @@ func ToComplaint(recipient mail.Address, reporter mail.Address, msg abi.Mail, co
 func ParseMime(mime []byte) (*abi.Mail, error) {
 	msg, err := enmime.ReadEnvelope(bytes.NewReader(mime))
 	if err != nil {
-		return nil, err
+		return nil, ErrFailedParsingMime
 	}
 
 	email := &abi.Mail{}
@@ -375,16 +372,21 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 		rErr = err
 		replyTo = rt
 	}
-	joinedErr := errors.Join(fErr, tErr, rErr)
-	if joinedErr != nil {
-		return nil, joinedErr
+	if tErr != nil {
+		return nil, ErrInvalidRecipientHeaders
+	}
+	if fErr != nil {
+		return nil, ErrInvalidFromHeader
+	}
+	if rErr != nil {
+		return nil, ErrInvalidReplyToHeader
 	}
 
 	if headers.Get("Cc") != "" {
 		cc, ccErr := mail.ParseAddressList(headers.Get("Cc"))
 		if ccErr != nil {
 			// failed parsing CC
-			return nil, ccErr
+			return nil, ErrInvalidRecipientHeaders
 		}
 		email.Cc = cc
 	}
@@ -392,7 +394,7 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 		bcc, bcErr := mail.ParseAddressList(headers.Get("Bcc"))
 		if bcErr != nil {
 			// failed parsing BCC
-			return nil, bcErr
+			return nil, ErrInvalidRecipientHeaders
 		}
 		email.Bcc = bcc
 	}
