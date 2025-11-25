@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"mime"
 	"mime/multipart"
 	"net/mail"
 	"net/textproto"
@@ -13,11 +14,104 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jhillyerd/enmime/v2"
 	abi "github.com/mailio/go-mailio-smtp-abi"
 	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html/charset"
 )
+
+var headerDecoder = &mime.WordDecoder{
+	CharsetReader: charset.NewReaderLabel,
+}
+
+// DecodeRFC2047Header decodes an RFC 2047 encoded header (e.g. "=?iso-2022-jp?...?=")
+// into UTF-8. If it fails or is not encoded, it returns the original string.
+func decodeHeader(h string) string {
+	if h == "" {
+		return h
+	}
+	decoded, err := headerDecoder.DecodeHeader(h)
+	if err != nil {
+		return h
+	}
+	return decoded
+}
+
+// parseAddressListHeader takes a slice of header values (e.g. headers["To"])
+// decodes each with RFC 2047, joins them, and parses into []*mail.Address.
+func parseAddressListHeader(values []string) ([]*mail.Address, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	var result []*mail.Address
+
+	for _, raw := range values {
+		decoded := decodeHeader(raw) // your RFC2047 + charset-aware decoder
+		// 1) Try normal, standards-compliant parse first
+		if addrs, err := mail.ParseAddressList(decoded); err == nil {
+			result = append(result, addrs...)
+			continue
+		}
+		// 2) Fallback: split on comma and try each part
+		parts := strings.Split(decoded, ",")
+		for _, part := range parts {
+			p := strings.TrimSpace(part)
+			if p == "" {
+				continue
+			}
+			// 2a) Try parsing as a single address
+			if addr, err := mail.ParseAddress(p); err == nil {
+				result = append(result, addr)
+				continue
+			}
+			// 2b) Handle broken patterns like "test@mail.io <test@mail.io>"
+			if lt := strings.Index(p, "<"); lt != -1 {
+				if gt := strings.Index(p[lt:], ">"); gt != -1 {
+					addrStr := strings.TrimSpace(p[lt+1 : lt+gt])
+					if addrStr != "" {
+						result = append(result, &mail.Address{Address: addrStr})
+						continue
+					}
+				}
+			}
+			// 2c) Last-resort: if it looks like an email, accept it as bare address
+			if strings.Contains(p, "@") {
+				result = append(result, &mail.Address{Address: p})
+			}
+		}
+	}
+	return result, nil
+}
+
+// parseSingleAddressHeader parses a single address header (like "From" or "Reply-To")
+// which may contain RFC 2047 encoded display names.
+func parseSingleAddressHeader(value string) (*mail.Address, error) {
+	if value == "" {
+		return nil, nil
+	}
+	decoded := decodeHeader(value)
+	addr, err := mail.ParseAddress(decoded)
+	if err != nil {
+		return nil, ErrInvalidFromHeader
+	}
+	return addr, nil
+}
+
+func normalizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+
+	// Attempt to detect charset from byte patterns
+	b := []byte(s)
+
+	enc, _, _ := charset.DetermineEncoding(b, "")
+	decoded, _ := enc.NewDecoder().Bytes(b)
+
+	return string(decoded)
+}
 
 func HtmlToText(html string) string {
 	p := bluemonday.NewPolicy()
@@ -350,44 +444,63 @@ func ToComplaint(recipient mail.Address, reporter mail.Address, msg abi.Mail, co
 }
 
 // Parsing raw mime message into a Mailio structure
-func ParseMime(mime []byte) (*abi.Mail, error) {
-	msg, err := enmime.ReadEnvelope(bytes.NewReader(mime))
+func ParseMime(mimeBytes []byte) (*abi.Mail, error) {
+	msg, err := enmime.ReadEnvelope(bytes.NewReader(mimeBytes))
 	if err != nil {
 		return nil, ErrFailedParsingMime
 	}
 
 	email := &abi.Mail{}
 	// raw mime is the original mime message
-	email.RawMime = mime
+	email.RawMime = mimeBytes
 
 	// get the headers
 	headers := msg.Root.Header
 	email.MessageId = msg.GetHeader("Message-ID")
-	from, _ := mail.ParseAddress(headers.Get("From"))
-	to, _ := mail.ParseAddressList(headers.Get("To"))
+	fromHeader := headers.Get("From")
+
+	from, fromErr := parseSingleAddressHeader(fromHeader) // ignore parsing error
+	if fromErr != nil {
+		return nil, ErrInvalidFromHeader
+	}
+	if from != nil {
+		email.From = *from
+	}
+	to, toErr := parseAddressListHeader([]string{headers.Get("To")}) // ignore parsing error
+	if toErr != nil {
+		return nil, ErrInvalidRecipientHeaders
+	}
 	// var rErr error
 	var replyTo []*mail.Address
 	if headers.Get("Reply-To") != "" {
-		rt, err := mail.ParseAddressList(headers.Get("Reply-To"))
-		if err == nil {
+		rt, rtErr := parseAddressListHeader([]string{headers.Get("Reply-To")}) // ignore parsing error
+		if rtErr != nil {
+			return nil, ErrInvalidReplyToHeader
+		}
+		if len(rt) > 0 {
 			replyTo = rt
 		}
 	}
 
 	if headers.Get("Cc") != "" {
-		cc, _ := mail.ParseAddressList(headers.Get("Cc"))
+		cc, ccErr := parseAddressListHeader([]string{headers.Get("Cc")}) // ignore parsing error
+		if ccErr != nil {
+			return nil, ErrInvalidRecipientHeaders
+		}
 		if len(cc) > 0 {
 			email.Cc = cc
 		}
 	}
 	if headers.Get("Bcc") != "" {
-		bcc, _ := mail.ParseAddressList(headers.Get("Bcc"))
+		bcc, bccErr := parseAddressListHeader([]string{headers.Get("Bcc")}) // ignore parsing error
+		if bccErr != nil {
+			return nil, ErrInvalidRecipientHeaders
+		}
 		if len(bcc) > 0 {
 			email.Bcc = bcc
 		}
 	}
 
-	email.From = *from
 	if len(to) > 0 {
 		email.To = make([]mail.Address, len(to))
 		for i, addrPtr := range to {
@@ -404,13 +517,18 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 		for _, v := range value {
 			v = strings.ReplaceAll(v, "\n", "")
 			v = strings.Trim(v, " ")
+			switch strings.ToLower(key) {
+			case "subject", "from", "to", "cc", "bcc", "reply-to":
+				v = decodeHeader(v)
+			}
 			vals = append(vals, v)
 		}
 		email.Headers[key] = vals
 	}
 
 	// get the body
-	email.Subject = msg.GetHeader("Subject")
+	rawSubject := msg.GetHeader("Subject")
+	email.Subject = decodeHeader(rawSubject)
 	dt, dateErr := msg.Date()
 	if dateErr != nil {
 		email.Timestamp = time.Now().UTC().UnixMilli()
@@ -440,6 +558,9 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 	email.BodyHTML = cleanupUGCHtml(msg.HTML)
 	email.BodyText = msg.Text
 
+	email.BodyHTML = normalizeUTF8(email.BodyHTML)
+	email.BodyText = normalizeUTF8(email.BodyText)
+
 	// mime.Inlines is a slice of inlined attacments. These are typically images that are embedded in the HTML body
 	totalInlineSize := int64(0)
 	for _, inline := range msg.Inlines {
@@ -451,7 +572,7 @@ func ParseMime(mime []byte) (*abi.Mail, error) {
 			ContentID:          inline.ContentID,
 		})
 	}
-	email.SizeBytes = int64(len(mime))
+	email.SizeBytes = int64(len(mimeBytes))
 	email.SizeHtmlBodyBytes = int64(len([]byte(email.BodyHTML)))
 	email.SizeInlineBytes = totalInlineSize
 	email.SizeAttachmentsBytes = totalAttachmentsSize
