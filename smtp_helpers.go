@@ -443,6 +443,69 @@ func ToComplaint(recipient mail.Address, reporter mail.Address, msg abi.Mail, co
 	return finalBuf.Bytes(), nil
 }
 
+func enrichWithForwardInfo(email *abi.Mail) {
+	fi := &abi.ForwardInfo{}
+	headers := email.Headers
+	// X-Forwarded-To
+	if vals, ok := headers["X-Forwarded-To"]; ok && len(vals) > 0 {
+		for _, addrStr := range vals {
+			if addrStr == "" {
+				continue
+			}
+			addr, err := parseSingleAddressHeader(addrStr)
+			if err != nil {
+				continue
+			}
+			fi.ForwardedTo = append(fi.ForwardedTo, addr)
+		}
+	}
+	// OriginalRecipient from Delivered-To
+	if vals, ok := headers["Delivered-To"]; ok && len(vals) > 0 {
+		for _, v := range vals {
+			v = strings.TrimSpace(v)
+			if v == "" {
+				continue
+			}
+			addr, err := parseSingleAddressHeader(v)
+			if err != nil {
+				continue
+			}
+			fi.OriginalRecipient = addr
+			viaParts := strings.Split(addr.Address, "@")
+			if len(viaParts) == 2 {
+				fi.Via = viaParts[1]
+			}
+			break
+		}
+	}
+	if vals, ok := headers["X-Forwarded-For"]; ok && len(vals) > 0 {
+		for _, v := range vals {
+			v = strings.TrimSpace(v)
+			parts := strings.Fields(v)
+			if len(parts) == 0 {
+				continue
+			}
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				addr, err := parseSingleAddressHeader(part)
+				if err != nil {
+					continue
+				}
+				fi.ForwardedFor = append(fi.ForwardedFor, addr)
+			}
+		}
+	}
+	if fi.ForwardedTo != nil || fi.OriginalRecipient != nil || len(fi.ForwardedFor) > 1 {
+		fi.IsForwarded = true
+	}
+	if fi.IsForwarded {
+		email.ForwardInfo = fi
+	}
+}
+
 // Parsing raw mime message into a Mailio structure
 func ParseMime(mimeBytes []byte) (*abi.Mail, error) {
 	msg, err := enmime.ReadEnvelope(bytes.NewReader(mimeBytes))
@@ -576,6 +639,9 @@ func ParseMime(mimeBytes []byte) (*abi.Mail, error) {
 	email.SizeHtmlBodyBytes = int64(len([]byte(email.BodyHTML)))
 	email.SizeInlineBytes = totalInlineSize
 	email.SizeAttachmentsBytes = totalAttachmentsSize
+
+	// forward info if it exists
+	enrichWithForwardInfo(email)
 
 	spf, dkim, dmarc := parseAuthResults(email.Headers)
 	email.SpfVerdict = &abi.VerdictStatus{Status: spf}

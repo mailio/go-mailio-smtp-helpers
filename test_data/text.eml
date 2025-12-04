@@ -1,0 +1,93 @@
+Return-Path: <forwarding-noreply@google.com>
+Received: from mail-ua1-f53.google.com (mail-ua1-f53.google.com [209.85.222.53])
+ by inbound-smtp.us-west-2.amazonaws.com with SMTP id 5o2iboabmsfl713qqiul6cte9algqqfh3ue0uc81
+ for example@mail.io;
+ Thu, 04 Dec 2025 21:45:41 +0000 (UTC)
+X-SES-Spam-Verdict: PASS
+X-SES-Virus-Verdict: PASS
+Received-SPF: pass (spfCheck: domain of google.com designates 209.85.222.53 as permitted sender) client-ip=209.85.222.53; envelope-from=forwarding-noreply@google.com; helo=mail-ua1-f53.google.com;
+Authentication-Results: amazonses.com;
+ spf=pass (spfCheck: domain of google.com designates 209.85.222.53 as permitted sender) client-ip=209.85.222.53; envelope-from=forwarding-noreply@google.com; helo=mail-ua1-f53.google.com;
+ dkim=pass header.i=@google.com;
+ dmarc=pass header.from=google.com;
+X-SES-RECEIPT: AEFBQUFBQUFBQUFIbXYreWRqdTd6OFZXNnZEeGorNWJrTEIwUEt5OGNDOENpZzBoRXpwVGdITVY5Qmp2NXlCRGJVeVh1RGpnR0RPRCs4QjZSTFBwaFlETWlXTm9oSTR1UUtMM01ocmpnZEU4N0cwaUI0UVBMczk3UEFTYW5sK1Y1U2swQ2dBRU1LcGZRQllGb0V0UDB5TTRuUUh6L1JGVXY1Zmd0eWFHdGdHTDZ4Y1ErQko3dmZGc25XNTJXUzJPTjVMY09lRDlRMksvdURRY2k3NWdodC84bjJCZjdSZXpyN2E5dS9jNi9FTHV5YnVoWDM5Qjd2ek9ybUR4Nzh5SHJTNHovTW1JQ2dNQU1waUN3RWpTNEppM2QwcjdxMFVycHgrTjVrdy96eHpMS244U3d6dFhKbnc9PQ==
+X-SES-DKIM-SIGNATURE: a=rsa-sha256; q=dns/txt; b=twRNfsmNVxY3AVkI1fcOBd/tdbdcaeNof/CmIJACLkbZBI0zomlTqjRP7Uxun591EhLmxfDjTnnsH2qjKFfWV/zXToS6PH+Gqg0N1wAtjX7lDtPdMYsNgmkNWm47T3EVuprSX6MmOaUs/3u1Lzhlew13idwc2x5jy4j7DPPfRfg=; c=relaxed/simple; s=gdwg2y3kokkkj5a55z2ilkup5wp5hhxx; d=amazonses.com; t=1764884742; v=1; bh=DjppGOIC8J4DH124YITaVjtEIhJ+Vlysk0o//LDt3YI=; h=From:To:Cc:Bcc:Subject:Date:Message-ID:MIME-Version:Content-Type:X-SES-RECEIPT;
+Received: by mail-ua1-f53.google.com with SMTP id a1e0cc1a2514c-937268fe284so868077241.0
+        for <example@mail.io>; Thu, 04 Dec 2025 13:45:41 -0800 (PST)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=google.com; s=20230601; t=1764884741; x=1765489541; darn=mailiomail.com;
+        h=to:from:subject:message-id:date:mime-version:from:to:cc:subject
+         :date:message-id:reply-to;
+        bh=DjppGOIC8J4DH124YITaVjtEIhJ+Vlysk0o//LDt3YI=;
+        b=lR74vdDZ5VTYXdcw/eS5t9X1y1RrsU0vJPWi/oXAozqa9ihLzdEmpYn3iATxRWr/ty
+         RzCC9f0IFkl1YQl8OQD8ceUDwsmKW8m7luW+Py4XE+O+uzgFRAuZaA1Pidq5NFEungLp
+         6Evv3krehk1VTQ8sCavDRucmkv8fC0Hnv/KvI1cjEAQbDDBSJiBNEVeTqvRl8ozT85tQ
+         UkZwU047j21tsN+Li7b2FcaY16VQmwrCclKIOo6y6ROWF87YzOYxEWM8EGx5rVuS0pJy
+         C6tAw+ujFaIVVSnspL9WNGXLc559ExfenmnSrAEyNZXEuJzD96fqVAgw8cYVf1EuTtqD
+         SNWQ==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20230601; t=1764884741; x=1765489541;
+        h=to:from:subject:message-id:date:mime-version:x-gm-gg
+         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to;
+        bh=DjppGOIC8J4DH124YITaVjtEIhJ+Vlysk0o//LDt3YI=;
+        b=PoES05ufYmhcsumasIuf6tJsGcQeQaJC9kL/7dgrwNhjXDQLUckpf1YFlkTCz+VZBG
+         P2K5iCh1p8udTWDAcBqDPHoDE1fcW6xjYDfHpSXzb9HNCNYjMS3j96+p24BSBs0YSHWA
+         xkvpVmnHe7NjOSiFfRjqCt6FnnTwICUvuwF6J/vLmLVinRci15NqSaxPlzPvn0+rHsN9
+         aap0/Qsrnj/wKdVHTzBJIsXTct/bouBhDGQ1qvEKZzv/Rujc655wpcXhaKVF0+qvmQ+f
+         RV5NCd5fRf9KEouRdppt/TytjYtEFixrjmJVTrA9i0laJlIEjlxCKFnJ5kf4ddOq6ulH
+         vj5w==
+X-Gm-Message-State: AOJu0Yyse53sKG6aghaxBuWDU5pQ1DsCkXmMs8v9INvC+aSAz/UP/uXJ
+	NWR00FSE8/DsJ8MfpQX0bshT654i3pSVTVzWGHErxetWv+f9C53l5qLiDlK1ggC30nW823xMAwv
+	XbJyzz8AbJO15t+oGbFNFxnTh9uv6X3vKruoyAcFHHYoS60eV+ZWdGPXxl56BY3r7mC1c
+X-Gm-Gg: ASbGnctIkND+35NZ5uQVMPMdE8wuOk7/LZsxBGtgMJUyTcG1JyTjbUW9GRJAVj+mPeT
+	gfwjs/YT5fdlrNvIAR/5Iz63zaE5WG7h/rbI971trtScnOTwWrhnBQ8LeXxpCN/9oMjCPNQQxgu
+	W0f2OH/JaB+0Rns9p2OQ3miHB7rnq/JlXVe9N3YTQbOpOQ/jqvjCc9KYbuXEw8yd01QG71ZP2me
+	BZ2uEdpasdoywy4rDe+3AFQiPj8QtHp7FfGgCuJSkFkcXoy+UWaBcVwEE3sjzxJFaFX7wAdNvUC
+	pRG1BdfQ3wIw8cumwNgkZ8ZI
+X-Google-Smtp-Source: AGHT+IGZ7DNoN9XJoBNJRWYLjIqKL2j3WbFxc3zBhUaqyqL53H4zta2RSNBZssSr5G2CeskcxSjyM4QaXK/nhHeM4ivvm57UTB9EVw==
+MIME-Version: 1.0
+X-Received: by 2002:a05:6102:4a90:b0:5db:e6fa:f7fe with SMTP id
+ ada2fe7eead31-5e48e3369c8mr3117438137.24.1764884740760; Thu, 04 Dec 2025
+ 13:45:40 -0800 (PST)
+X-Google-Address-Confirmation: 6L8Z2tQe9j4LXENJ3z8SvOte_7g
+Date: Thu, 4 Dec 2025 14:45:40 -0700
+X-Gm-Features: AQt7F2rTS5E3R6jyhW8sAOr_WQpdKKAXfR3_Tqe9VZsCRw0JmqYg0tBX3jXsMYs
+Message-ID: <CADUk_sUp_muj4zD-6aFifEiZAAG8-6c_B-72tRO67EwKRsuBoA@mail.gmail.com>
+Subject: (Gmail Forwarding Confirmation - Receive Mail from example@gmail.com
+From: Gmail Team <forwarding-noreply@google.com>
+To: example@mail.io
+Content-Type: text/plain; charset="UTF-8"
+
+example@gmail.com has requested to automatically forward mail to your email
+address example@mail.io.
+
+To allow example@gmail.com to automatically forward mail to your address,
+please click the link below to confirm the request:
+
+https://mail-settings.google.com/mail/vf-abc
+
+If you click the link and it appears to be broken, please copy and paste it
+into a new browser window.
+
+Thanks for using Gmail!
+
+Sincerely,
+
+The Gmail Team
+
+If you do not approve of this request, no further action is required.
+example@gmail.com cannot automatically forward messages to your
+email address
+unless you confirm the request by clicking the link above. If you accidentally
+clicked the link, but you do not want to allow example@gmail.com to
+automatically forward messages to your address, click this link to cancel this
+verification:
+https://mail-settings.google.com/mail/uf-abc
+
+To learn more about why you might have received this message, please
+visit: http://support.google.com/mail/bin/answer.py?answer=184973.
+
+Please do not respond to this message. If you'd like to contact the
+Google.com Team, please log in to your account and click 'Help' at
+the top of any page. Then, click 'Contact Us' along the bottom of the
+Help Center.
